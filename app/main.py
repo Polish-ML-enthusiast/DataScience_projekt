@@ -1,5 +1,5 @@
 import streamlit as st
-st.info("👉 To jest wersja testowa pliku main.py")
+
 st.title("🏠 Predykcja cen nieruchomości w Polsce")
 st.markdown("""
 ## O projekcie
