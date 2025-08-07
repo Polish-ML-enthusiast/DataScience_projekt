@@ -1,3 +1,10 @@
+
+# ======================================================================================================================
+# IMPORTY I USTAWIENIA WSTĘPNE
+# =======================================================================================================================
+
+#-----------------importy bibliotek-----------------------------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,23 +13,36 @@ import seaborn as sns
 import geopandas as gpd
 from shapely.geometry import Point
 import folium
-from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 from geopy.distance import geodesic
 from pathlib import Path
+import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
 import branca.colormap as cm
 import requests
+import locale
+from scipy.stats import mode
+import random
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import mode
+import numpy as np
 
+#-----------------ustawienia------------------------------------------------------------------------
+try:
+    locale.setlocale(locale.LC_ALL, "pl_PL.UTF-8")  # Linux/Mac
+except:
+    locale.setlocale(locale.LC_ALL, "")  # fallback dla Windows
 
-# Ścieżki do danych
+#ścieżki
 DATA_PATH = Path("data/processed/apartments_cleaned.csv")
 MAP_PATH = Path("data/maps/ne_10m_admin_0_countries.shp")
 REGIONS_PATH = Path("data/maps/wojewodztwa.shp")
 ULICE_PATH = Path("data/processed/ulice_w_miastach.csv")
 
-# Buforowanie danych
+# wczytanie danych
+
 @st.cache_data
 def load_data():
     return pd.read_csv(DATA_PATH)
@@ -33,11 +53,25 @@ def load_ulice():
 
 df = load_data()
 ulice_df = load_ulice()
-ulice_df = ulice_df[ulice_df["miasto"].isin(df["miasto"].unique())]  # spójność miast
+ulice_df = ulice_df[ulice_df["miasto"].isin(df["miasto"].unique())]
 
 st.title("📊 Eksploracyjna Analiza Danych (EDA)")
+st.markdown("""
+    <style>
+    .main {
+        max-width: 100%;
+        padding-left: 3rem;
+        padding-right: 3rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# 1. Podstawowe informacje
+# ======================================================================================================================
+# WIZUALIZACJA - ANALIZA EDA
+# =======================================================================================================================
+
+#-----------------sekcja "Podstawowe informacje o danych"----------------------------------------------------------------
+
 st.header("Podstawowe informacje o danych")
 
 stats = {
@@ -51,7 +85,7 @@ stats = {
     "Zakres pow.": f"{df['powierzchnia_m2'].min():,.2f}–{df['powierzchnia_m2'].max():,.2f} m²".replace(",", " ")
 }
 
-box_color = "#e9f0f5"
+box_color ="#e9f0f5"
 box_style = """
     background-color: {color};
     padding: 16px;
@@ -66,7 +100,6 @@ box_style = """
     box-sizing: border-box;
 """
 
-# Rozbijanie na wiersze po 4 elementy
 stat_items = list(stats.items())
 num_per_row = 4
 rows = [stat_items[i:i + num_per_row] for i in range(0, len(stat_items), num_per_row)]
@@ -83,28 +116,23 @@ for row in rows:
             """, unsafe_allow_html=True)
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
-
-
-# 2. Liczba ofert według miasta
-# 2. Liczba ofert według miasta – interaktywna wersja Plotly
-
-import plotly.express as px
+#-----------------sekcja "Liczba ofet według miasta"----------------------------------------------------------------
 
 st.header("Liczba ofert według miasta")
 
-# Czyszczenie danych wejściowych
 df_clean = df.copy()
 df_clean['miasto'] = df_clean['miasto'].astype(str).str.strip()
-df_clean = df_clean[df_clean['miasto'].notna() & (df_clean['miasto'] != '')]
 
-# Wykres 1: liczba ofert per miasto
 df_city_counts = (
     df_clean
     .groupby('miasto')
     .size()
     .reset_index(name='liczba_ofert')
-    .sort_values('miasto')
 )
+
+# uszczegelowanie miast w kolejności alfabetycznej
+df_city_counts['sort_key'] = df_city_counts['miasto'].apply(locale.strxfrm)
+df_city_counts = df_city_counts.sort_values('sort_key')
 
 fig_city = px.bar(
     df_city_counts,
@@ -114,12 +142,7 @@ fig_city = px.bar(
     color_discrete_sequence=["#014D65"]
 )
 
-fig_city.update_traces(
-    textposition="outside",
-    marker_line_width=1,
-    marker_line_color="black",
-    hovertemplate="<b>%{x}</b><br>Liczba ofert: %{y}<extra></extra>"
-)
+fig_city.update_traces(textposition="outside", marker_line_width=1, marker_line_color="black")
 fig_city.update_layout(
     xaxis_title="Miasto",
     yaxis_title="Liczba ofert",
@@ -131,8 +154,9 @@ fig_city.update_layout(
 )
 st.plotly_chart(fig_city, use_container_width=True)
 
+#-----------------sekcja "Mapa lokalizacji miast"----------------------------------------------------------------
 
-# 4. Mapa lokalizacji miast
+st.header("Mapa lokalizacji miast")
 
 try:
     city_grouped = df.groupby("miasto").agg({
@@ -144,12 +168,9 @@ try:
     geometry = [Point(xy) for xy in zip(city_grouped.dlugosc_geo, city_grouped.szerokosc_geo)]
     cities_gdf = gpd.GeoDataFrame(city_grouped, geometry=geometry, crs="EPSG:4326")
 
-    world = gpd.read_file(MAP_PATH)
-    poland = world[world["NAME"] == "Poland"]
     regions = gpd.read_file(REGIONS_PATH).to_crs("EPSG:4326")
 
     fig3, ax3 = plt.subplots(figsize=(10, 12))
-    poland.plot(ax=ax3, color='#f0f0f0', edgecolor='#444444')
     regions.boundary.plot(ax=ax3, color='gray', linestyle='--')
     size_scaled = cities_gdf['count'] / cities_gdf['count'].max() * 300
     cities_gdf.plot(ax=ax3, color='crimson', markersize=size_scaled, edgecolor='black', alpha=0.8)
@@ -164,20 +185,19 @@ except Exception as e:
     st.warning("Nie udało się wygenerować mapy.")
     st.code(str(e))
 
+#-----------------sekcja "Liczba ofert według miasta i rodzaju nieruchomości"----------------------------------------------------------------
 
-# Wykres 2: liczba ofert per miasto i typ nieruchomości
-
-
-
-st.subheader("Liczba ofert według miasta i rodzaju nieruchomości ")
+st.subheader("Liczba ofert według miasta i rodzaju nieruchomości")
 
 df_grouped = (
     df
     .groupby(["miasto", "typ_nieruchomosci"])
     .size()
     .reset_index(name="liczba_ofert")
-    .sort_values("miasto")
 )
+
+df_grouped['sort_key'] = df_grouped['miasto'].apply(locale.strxfrm)
+df_grouped = df_grouped.sort_values('sort_key')
 
 custom_palette = ["#bedbea", "#779cae", "#5688a0", "#37718f", "#165978"]
 
@@ -187,12 +207,11 @@ fig_type = px.bar(
     y="liczba_ofert",
     color="typ_nieruchomosci",
     barmode="group",
-    category_orders={"miasto": sorted(df_grouped["miasto"].unique())},
+    category_orders={"miasto": df_grouped["miasto"].tolist()},
     color_discrete_sequence=custom_palette
 )
 
 fig_type.update_traces(
-    text=None,
     hovertemplate="<b>Miasto:</b> %{x}<br><b>Typ:</b> %{customdata[0]}<br><b>Liczba ofert:</b> %{y}<extra></extra>",
     customdata=np.stack([df_grouped['typ_nieruchomosci']], axis=-1)
 )
@@ -210,19 +229,17 @@ fig_type.update_layout(
 )
 st.plotly_chart(fig_type, use_container_width=True)
 
+#-----------------sekcja "Mapa nieruchomosci i wybranej ulicy"----------------------------------------------------------------
 
-# 7. Mapa nieruchomości i wybranej ulicy
-
-
-st.header("🗌️ Mapa nieruchomości i wybranej ulicy")
+st.header("Mapa nieruchomości i wybranej ulicy")
 
 if "ulica" not in df.columns or df["ulica"].isnull().all():
-    st.warning("⚠️ Kolumna 'ulica' jest pusta lub nie istnieje. Sprawdź preprocessing.")
+    st.warning("Kolumna 'ulica' jest pusta lub nie istnieje. Sprawdź preprocessing.")
 else:
     miasto = st.selectbox("Wybierz miasto:", df["miasto"].unique())
     ulice_miasta = ulice_df[ulice_df["miasto"] == miasto]["ulica"].dropna().unique().tolist()
     if not ulice_miasta:
-        st.warning("⚠️ Brak ulic w wybranym mieście w pliku.")
+        st.warning("Brak ulic w wybranym mieście w pliku.")
         ulica = None
     else:
         ulica = st.selectbox("Wybierz ulicę:", sorted(ulice_miasta))
@@ -232,7 +249,7 @@ else:
     center_lon = nieruchomosci["dlugosc_geo"].mean()
 
     if ulica:
-        nieruchomosci_ulica = nieruchomosci[nieruchomosci["ulica"].str.contains(ulica, case=False, na=False)]
+        nieruchomosci_ulica = nieruchomosci[nieruchomosci["ulica"].str.contains(ulica, case=False, na=False, regex=False)]
         if not nieruchomosci_ulica.empty:
             center_lat = nieruchomosci_ulica["szerokosc_geo"].mean()
             center_lon = nieruchomosci_ulica["dlugosc_geo"].mean()
@@ -267,7 +284,7 @@ else:
             ).add_to(mapa)
 
     # Filtrowanie POI
-    st.subheader("🔍 Wybierz rodzaje punktów POI do wyświetlenia")
+    st.subheader("Wybierz rodzaje punktów POI do wyświetlenia")
     POI_TYPES = {
         "school": ("graduation-cap", "Szkoła"),
         "hospital": ("hospital", "Szpital"),
@@ -280,27 +297,60 @@ else:
         "park": ("tree", "Park")
     }
 
-    selected_poi_types = st.multiselect("Rodzaje POI:", options=list(POI_TYPES.keys()), default=list(POI_TYPES.keys()), format_func=lambda x: POI_TYPES[x][1])
+    default_poi = list(POI_TYPES.keys())
+
+    selected_poi_types = st.multiselect(
+        "Rodzaje POI:", 
+        options=default_poi,  # wszystkie dostępne
+        default=default_poi,  # wszystkie domyślnie zaznaczone
+        format_func=lambda x: POI_TYPES[x][1]
+    )
 
     def get_poi_osm(lat, lon, radius_m=1000):
         overpass_url = "http://overpass-api.de/api/interpreter"
+
+        if not selected_poi_types:
+            st.warning("⚠️ Wybierz przynajmniej jeden typ POI.")
+            return []
+
         selected = "|".join(selected_poi_types)
+
         query = f"""
         [out:json];
         (
-          node["amenity"~"{selected}"](around:{radius_m},{lat},{lon});
-          node["shop"="supermarket"](around:{radius_m},{lat},{lon});
-          node["leisure"="park"](around:{radius_m},{lat},{lon});
+        node["amenity"~"{selected}"](around:{radius_m},{lat},{lon});
+        node["shop"="supermarket"](around:{radius_m},{lat},{lon});
+        node["leisure"="park"](around:{radius_m},{lat},{lon});
         );
         out center;
         """
-        response = requests.get(overpass_url, params={'data': query})
-        data = response.json()
-        return data.get("elements", [])
+
+        try:
+            response = requests.post(overpass_url, data=query, timeout=60)
+
+            # Sprawdzenie poprawności kodu HTTP
+            if response.status_code != 200:
+                st.warning(f"⚠️ Błąd HTTP {response.status_code}: nie udało się pobrać danych z Overpass API.")
+                st.code(response.text)
+                return []
+
+            try:
+                data = response.json()
+                return data.get("elements", [])
+            except ValueError:
+                st.warning("⚠️ Nie udało się sparsować odpowiedzi jako JSON.")
+                st.text("Treść odpowiedzi serwera:")
+                st.code(response.text)
+                return []
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"❌ Błąd połączenia z Overpass API: {str(e)}")
+            return []
+
 
     poi_data = get_poi_osm(center_lat, center_lon, radius_m=promien * 1000)
 
-    legend_html = '<div style="position: fixed; bottom: 50px; left: 50px; width: 200px; height: auto; background-color: white; z-index:9999; font-size:14px; border:1px solid grey; border-radius:8px; padding: 10px">'
+    legend_html = '<div style="position: fixed; top: 100px; left: 50px; width: 220px; background-color: white; z-index:9999; font-size:14px; border:1px solid grey; border-radius:8px; padding: 10px; box-shadow: 2px 2px 10px rgba(0,0,0,0.1);">'
     legend_html += '<b>Legenda POI</b><br>'
     for k in selected_poi_types:
         icon, label = POI_TYPES[k]
@@ -323,41 +373,33 @@ else:
 
     st_folium(mapa, width=900, height=600)
 
-
-#boxploty 
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy.stats import mode
-import numpy as np
+#-----------------sekcja "Wykresy pudełkowe ceny za 1 m2"----------------------------------------------------------------
 
 st.header("Wykresy pudełkowe ceny za 1m2")
 
-# Przygotowanie danych
 df_plot = df.copy()
 df_plot = df_plot[df_plot["cena_za_m2"].notna() & (df_plot["cena_za_m2"] < 30000)]
 df_plot["miasto"] = df_plot["miasto"].astype(str).str.strip().str.title()
 
-# Obliczamy modę ceny dla każdego miasta
+# obliczenie mody ceny dla każdego miasta
 moda_dict = (
     df_plot.groupby("miasto")["cena_za_m2"]
     .agg(lambda x: mode(x, keepdims=True)[0][0])  # najczęściej występująca wartość
     .to_dict()
 )
 
-# Normalizacja mody (0–1)
+# normalizacja mody (0–1)
 moda_values = np.array(list(moda_dict.values()))
 moda_scaled = (moda_values - moda_values.min()) / (moda_values.max() - moda_values.min())
 
-# Generujemy paletę z jednego koloru (np. niebieski)
+# generowanie koloru
 base_color = "blue"
 palette = sns.light_palette(base_color, n_colors=len(moda_scaled), reverse=True)
 
-# Mapujemy miasta na kolory według posortowanej listy
+# Mappowanie miast na kolory
 sorted_cities = sorted(moda_dict.keys())
 city_color_map = dict(zip(sorted_cities, palette))
 
-# Rysujemy boxplot
 fig, ax = plt.subplots(figsize=(14, 8))
 
 sns.boxplot(
@@ -365,7 +407,9 @@ sns.boxplot(
     x="miasto",
     y="cena_za_m2",
     order=sorted_cities,
+    hue="miasto",
     palette=city_color_map,
+    legend=False,
     showmeans=True,
     meanprops={"marker": "o", "markerfacecolor": "black", "markeredgecolor": "black"},
     boxprops=dict(alpha=0.9),
@@ -379,15 +423,14 @@ ax.tick_params(axis='x', rotation=45)
 sns.despine(ax=ax)
 st.pyplot(fig)
 
-
-# 3. Histogram ceny za 1 m²
+#-----------------sekcja "Histogram ceny za 1m2"----------------------------------------------------------------
 
 st.subheader("Histogram ceny za 1m²")
 miasta_dostepne = sorted(df['miasto'].dropna().unique())
 wybrane_miasta = st.multiselect("Miasta:", options=miasta_dostepne, default=miasta_dostepne[:1])
 
 if not wybrane_miasta:
-            st.warning("⚠️ Wybierz co najmniej jedno miasto.")
+            st.warning("Wybierz co najmniej jedno miasto.")
 else:
     fig_hist, ax_hist = plt.subplots(figsize=(10, 6))
     colors = sns.color_palette("Set2", n_colors=len(wybrane_miasta))
@@ -412,13 +455,9 @@ else:
     sns.despine(ax=ax_hist)
     st.pyplot(fig_hist)
 
+#-----------------sekcja "Macierz korelacji między zmiennymi"----------------------------------------------------------------
 
-
-
-
-# 5. Macierz korelacji
-
-st.header("🔍 Macierz korelacji między zmiennymi")
+st.header("Macierz korelacji między zmiennymi")
 
 numeric_df = df.select_dtypes(include=["float64", "int64"]).copy()
 if numeric_df.isnull().any().any():
@@ -430,7 +469,7 @@ fig_heatmap = go.Figure(data=go.Heatmap(
     z=corr_matrix.values,
     x=corr_matrix.columns,
     y=corr_matrix.index,
-    colorscale="Inferno",
+    colorscale="plasma",
     zmin=-1,
     zmax=1,
     hoverongaps=False,
@@ -463,25 +502,9 @@ fig_heatmap.update_layout(
 
 st.plotly_chart(fig_heatmap, use_container_width=False)
 
-# Zapis do pliku PNG
-save_btn = st.button("💾 Zapisz wykres do pliku PNG")
-if save_btn:
-    buf = BytesIO()
-    fig_heatmap.write_image(buf, format="png")
-    st.download_button(
-        label="📥 Pobierz jako PNG",
-        data=buf.getvalue(),
-        file_name="macierz_korelacji.png",
-        mime="image/png"
-    )
+#-----------------sekcja "Interaktywny wykres zależności"----------------------------------------------------------------
 
-
-
-
-
-
-# 6. Interaktywny wykres zależności
-st.header("📈 Interaktywny wykres zależności pomiędzy wybranymi zmiennymi")
+st.header("Interaktywny wykres zależności pomiędzy wybranymi zmiennymi")
 numeric_columns = numeric_df.columns.tolist()
 default_x = numeric_columns.index("powierzchnia_m2") if "powierzchnia_m2" in numeric_columns else 0
 default_y = numeric_columns.index("cena") if "cena" in numeric_columns else 1
