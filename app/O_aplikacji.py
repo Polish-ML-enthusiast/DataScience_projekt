@@ -50,7 +50,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.markdown("""
-    ## 📂 Repozytorium projektu
+    ## Repozytorium projektu
 
     Pełen kod źródłowy aplikacji dostępny jest publicznie na GitHub:  
     [https://github.com/Polish-ML-enthusiast/DataScience_projekt](https://github.com/Polish-ML-enthusiast/DataScience_projekt)

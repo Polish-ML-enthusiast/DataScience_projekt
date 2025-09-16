@@ -4,4 +4,17 @@ __pycache__/
 *.pkl
 *.csv
 .env
+cache/# === DS / cache / system ===
 cache/
+*.pyc
+__pycache__/
+.ipynb_checkpoints/
+.env
+.venv/
+venv/
+*.log
+
+# === dane surowe / wyniki lokalne (jeœli masz) ===
+data/raw/
+data/interim/
+reports/figures/
